@@ -7,15 +7,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "image": "latest"
+        "image": "default"
       },
       "env": {
-        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
-      }
-    },
-    "production": {
-      "android": {
-        "buildType": "app-bundle"
+        "GRADLE_OPTS": "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
       }
     }
   }
