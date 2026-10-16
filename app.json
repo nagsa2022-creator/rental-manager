@@ -5,9 +5,17 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "android": {
-      "package": "com.rentalmanager.app"
+      "package": "com.rentalmanager.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1A5276"
+      }
     },
+    "plugins": [
+      "expo-sqlite",
+      "expo-document-picker"
+    ],
     "extra": {
       "eas": {
         "projectId": "9c47c6f1-4f80-4d55-9614-d149b74d0887"
