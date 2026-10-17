@@ -33,15 +33,60 @@ jobs:
       - name: Patch expo Kotlin file
         run: |
           FACTORY_FILE="node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt"
-
-          # Add missing import
           sed -i '/import com.facebook.react.fabric.ComponentFactory/a import com.facebook.react.fabric.ReactNativeConfig' "$FACTORY_FILE"
-
-          # Add missing method override inside ExpoReactHostDelegate class
           sed -i '/override fun handleInstanceException/i\    override fun getReactNativeConfig(): ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG\n' "$FACTORY_FILE"
 
-          echo "=== Verify patch applied ==="
-          grep -n "getReactNativeConfig\|ReactNativeConfig" "$FACTORY_FILE"
+      - name: Fix MainApplication.kt for RN 0.77
+        run: |
+          cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'KOTLIN'
+          package com.rentalmanager.app
+
+          import android.app.Application
+          import android.content.res.Configuration
+          import com.facebook.react.PackageList
+          import com.facebook.react.ReactApplication
+          import com.facebook.react.ReactHost
+          import com.facebook.react.ReactNativeHost
+          import com.facebook.react.ReactPackage
+          import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+          import com.facebook.react.defaults.DefaultReactNativeHost
+          import com.facebook.soloader.SoLoader
+          import expo.modules.ApplicationLifecycleDispatcher
+          import expo.modules.ReactNativeHostWrapper
+
+          class MainApplication : Application(), ReactApplication {
+
+            override val reactNativeHost: ReactNativeHost =
+              ReactNativeHostWrapper(this, object : DefaultReactNativeHost(this) {
+                override fun getPackages(): List<ReactPackage> =
+                  PackageList(this).packages
+
+                override fun getJSMainModuleName(): String = "index"
+
+                override fun getUseDeveloperSupport(): Boolean = false
+
+                override val isNewArchEnabled: Boolean = false
+                override val isHermesEnabled: Boolean = true
+              })
+
+            override val reactHost: ReactHost
+              get() = getDefaultReactHost(applicationContext, reactNativeHost)
+
+            override fun onCreate() {
+              super.onCreate()
+              SoLoader.init(this, false)
+              ApplicationLifecycleDispatcher.onApplicationCreate(this)
+            }
+
+            override fun onConfigurationChanged(newConfig: Configuration) {
+              super.onConfigurationChanged(newConfig)
+              ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
+            }
+          }
+          KOTLIN
+
+          echo "=== MainApplication.kt replaced ==="
+          cat android/app/src/main/java/com/rentalmanager/app/MainApplication.kt
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
