@@ -27,30 +27,21 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Debug - show interface we need to implement
-        run: |
-          echo "=== ReactHostDelegate interface ==="
-          cat node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
-          echo ""
-          echo "=== DefaultReactHostDelegate (reference implementation) ==="
-          cat node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
-
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
 
       - name: Patch expo Kotlin file
         run: |
-          # Add the missing getReactNativeConfig override to ExpoReactHostDelegate
-          # First show what we're patching
-          echo "=== BEFORE PATCH ==="
-          grep -n "reactPackages\|ReactHostDelegate\|getReactNativeConfig" node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
+          FACTORY_FILE="node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt"
 
-          # Insert the missing override before the handleInstanceException method
-          sed -i '/override fun handleInstanceException/i\    override val reactNativeConfig: com.facebook.react.ReactNativeConfig\n      get() = com.facebook.react.ReactNativeConfig.DEFAULT\n' \
-            node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt
+          # Add missing import
+          sed -i '/import com.facebook.react.fabric.ComponentFactory/a import com.facebook.react.fabric.ReactNativeConfig' "$FACTORY_FILE"
 
-          echo "=== AFTER PATCH ==="
-          grep -n "reactNativeConfig\|reactPackages\|handleInstanceException" node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
+          # Add missing method override inside ExpoReactHostDelegate class
+          sed -i '/override fun handleInstanceException/i\    override fun getReactNativeConfig(): ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG\n' "$FACTORY_FILE"
+
+          echo "=== Verify patch applied ==="
+          grep -n "getReactNativeConfig\|ReactNativeConfig" "$FACTORY_FILE"
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
