@@ -27,8 +27,35 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Debug versions
+        run: |
+          echo "=== INSTALLED VERSIONS ==="
+          node -e "const p=require('./node_modules/expo/package.json'); console.log('expo:', p.version)"
+          node -e "const p=require('./node_modules/react-native/package.json'); console.log('react-native:', p.version)"
+          node -e "const p=require('./node_modules/react-native-screens/package.json'); console.log('react-native-screens:', p.version)"
+          node -e "const p=require('./node_modules/react-native-safe-area-context/package.json'); console.log('react-native-safe-area-context:', p.version)"
+          node -e "const p=require('./node_modules/@react-navigation/native/package.json'); console.log('@react-navigation/native:', p.version)"
+          echo "=== EXPO PEER DEPS ==="
+          node -e "const p=require('./node_modules/expo/package.json'); console.log(JSON.stringify(p.peerDependencies, null, 2))"
+          echo "=== RN PEER DEPS ==="
+          node -e "const p=require('./node_modules/react-native/package.json'); console.log(JSON.stringify(p.peerDependencies, null, 2))"
+
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
+
+      - name: Debug generated files
+        run: |
+          echo "=== android/build.gradle ==="
+          cat android/build.gradle
+          echo ""
+          echo "=== Kotlin version in gradle ==="
+          grep -ri "kotlin" android/build.gradle android/gradle.properties || true
+          echo ""
+          echo "=== The failing Kotlin file ==="
+          cat node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
+          echo ""
+          echo "=== getReactNativeConfig in RN ==="
+          grep -r "getReactNativeConfig" node_modules/react-native/ReactAndroid/ --include="*.kt" --include="*.java" -l || true
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
@@ -37,7 +64,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --stacktrace 2>&1 | tail -100
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
