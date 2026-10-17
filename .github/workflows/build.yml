@@ -27,35 +27,30 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Debug versions
+      - name: Debug - show interface we need to implement
         run: |
-          echo "=== INSTALLED VERSIONS ==="
-          node -e "const p=require('./node_modules/expo/package.json'); console.log('expo:', p.version)"
-          node -e "const p=require('./node_modules/react-native/package.json'); console.log('react-native:', p.version)"
-          node -e "const p=require('./node_modules/react-native-screens/package.json'); console.log('react-native-screens:', p.version)"
-          node -e "const p=require('./node_modules/react-native-safe-area-context/package.json'); console.log('react-native-safe-area-context:', p.version)"
-          node -e "const p=require('./node_modules/@react-navigation/native/package.json'); console.log('@react-navigation/native:', p.version)"
-          echo "=== EXPO PEER DEPS ==="
-          node -e "const p=require('./node_modules/expo/package.json'); console.log(JSON.stringify(p.peerDependencies, null, 2))"
-          echo "=== RN PEER DEPS ==="
-          node -e "const p=require('./node_modules/react-native/package.json'); console.log(JSON.stringify(p.peerDependencies, null, 2))"
+          echo "=== ReactHostDelegate interface ==="
+          cat node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
+          echo ""
+          echo "=== DefaultReactHostDelegate (reference implementation) ==="
+          cat node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
 
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Debug generated files
+      - name: Patch expo Kotlin file
         run: |
-          echo "=== android/build.gradle ==="
-          cat android/build.gradle
-          echo ""
-          echo "=== Kotlin version in gradle ==="
-          grep -ri "kotlin" android/build.gradle android/gradle.properties || true
-          echo ""
-          echo "=== The failing Kotlin file ==="
-          cat node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
-          echo ""
-          echo "=== getReactNativeConfig in RN ==="
-          grep -r "getReactNativeConfig" node_modules/react-native/ReactAndroid/ --include="*.kt" --include="*.java" -l || true
+          # Add the missing getReactNativeConfig override to ExpoReactHostDelegate
+          # First show what we're patching
+          echo "=== BEFORE PATCH ==="
+          grep -n "reactPackages\|ReactHostDelegate\|getReactNativeConfig" node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
+
+          # Insert the missing override before the handleInstanceException method
+          sed -i '/override fun handleInstanceException/i\    override val reactNativeConfig: com.facebook.react.ReactNativeConfig\n      get() = com.facebook.react.ReactNativeConfig.DEFAULT\n' \
+            node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt
+
+          echo "=== AFTER PATCH ==="
+          grep -n "reactNativeConfig\|reactPackages\|handleInstanceException" node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt || true
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
@@ -64,7 +59,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace 2>&1 | tail -100
+          ./gradlew assembleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
