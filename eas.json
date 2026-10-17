@@ -7,8 +7,13 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "image": "ubuntu-22.04-jdk-17-ndk-r25b",
-        "node": "22.0.0"
+        "image": "ubuntu-22.04-jdk-17-ndk-r25b"
+      },
+      "node": "22.0.0"
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
       }
     }
   }
