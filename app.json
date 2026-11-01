@@ -2,15 +2,16 @@
   "expo": {
     "name": "Rental Manager",
     "slug": "rental-manager",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "android": {
       "package": "com.rentalmanager.app",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1A5276"
+        "backgroundColor": "#0D1117"
       }
     },
     "plugins": [
