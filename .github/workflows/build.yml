@@ -30,11 +30,6 @@ jobs:
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Debug - show generated MainApplication.kt
-        run: |
-          echo "=== GENERATED MainApplication.kt ==="
-          cat android/app/src/main/java/com/rentalmanager/app/MainApplication.kt
-
       - name: Patch expo Kotlin file
         run: |
           FACTORY_FILE="node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt"
@@ -43,51 +38,55 @@ jobs:
 
       - name: Fix MainApplication.kt for RN 0.77
         run: |
-          # Instead of replacing the whole file, patch only the broken references
-          FILE="android/app/src/main/java/com/rentalmanager/app/MainApplication.kt"
+          cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'KOTLIN'
+          package com.rentalmanager.app
 
-          echo "=== BEFORE PATCH ==="
-          grep -n "ReactNativeApplicationEntryPoint\|ReleaseLevel\|loadReactNative\|SoLoader" "$FILE" || true
+          import android.app.Application
+          import android.content.res.Configuration
 
-          # Replace ReactNativeApplicationEntryPoint import and usage with SoLoader
-          sed -i 's/import com.facebook.react.defaults.ReactNativeApplicationEntryPoint/import com.facebook.soloader.SoLoader/' "$FILE"
+          import com.facebook.react.PackageList
+          import com.facebook.react.ReactApplication
+          import com.facebook.react.ReactNativeHost
+          import com.facebook.react.ReactPackage
+          import com.facebook.react.ReactHost
+          import com.facebook.react.defaults.DefaultReactNativeHost
+          import com.facebook.soloader.SoLoader
 
-          # Remove ReleaseLevel import
-          sed -i '/import com.facebook.react.defaults.ReleaseLevel/d' "$FILE"
+          import expo.modules.ApplicationLifecycleDispatcher
+          import expo.modules.ReactNativeHostWrapper
 
-          # Replace the class declaration - remove ReactNativeApplicationEntryPoint interface
-          sed -i 's/class MainApplication : Application(), ReactApplication, ReactNativeApplicationEntryPoint/class MainApplication : Application(), ReactApplication/' "$FILE"
+          class MainApplication : Application(), ReactApplication {
 
-          # Replace loadReactNative block with SoLoader.init
-          # First remove the entire loadReactNative/releaseLevel block and replace onCreate
-          python3 << 'PYFIX'
-          import re
+            override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
+              this,
+              object : DefaultReactNativeHost(this) {
+                override fun getPackages(): List<ReactPackage> =
+                  PackageList(this).packages.apply {
+                  }
 
-          with open("android/app/src/main/java/com/rentalmanager/app/MainApplication.kt", "r") as f:
-              content = f.read()
+                override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
-          # Replace the onCreate that uses loadReactNative with SoLoader version
-          # Pattern: find onCreate method and replace loadReactNative call
-          content = re.sub(
-              r'loadReactNative\s*\(.*?\)\s*\{[^}]*\}',
-              'SoLoader.init(this, false)',
-              content,
-              flags=re.DOTALL
-          )
+                override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-          # Remove any remaining releaseLevel/ReleaseLevel references
-          content = re.sub(r'.*releaseLevel.*\n', '', content)
-          content = re.sub(r'.*ReleaseLevel.*\n', '', content)
+                override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+              }
+            )
 
-          # Remove loadReactNative if still there as standalone call
-          content = re.sub(r'\s*loadReactNative\(.*?\)', '\n    SoLoader.init(this, false)', content)
+            override val reactHost: ReactHost
+              get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
 
-          with open("android/app/src/main/java/com/rentalmanager/app/MainApplication.kt", "w") as f:
-              f.write(content)
-          PYFIX
+            override fun onCreate() {
+              super.onCreate()
+              SoLoader.init(this, false)
+              ApplicationLifecycleDispatcher.onApplicationCreate(this)
+            }
 
-          echo "=== AFTER PATCH ==="
-          cat "$FILE"
+            override fun onConfigurationChanged(newConfig: Configuration) {
+              super.onConfigurationChanged(newConfig)
+              ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
+            }
+          }
+          KOTLIN
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
