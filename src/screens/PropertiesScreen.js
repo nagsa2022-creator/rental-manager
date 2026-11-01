@@ -1,120 +1,161 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, FlatList, TextInput, TouchableOpacity,
+  StyleSheet, ActivityIndicator, Pressable,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDatabase } from '../database/database';
+import { COLORS, SPACING, CARD_STYLE, FONTS, INPUT_STYLE } from '../constants/theme';
+import { getAllProperties } from '../database/queries';
 
 export default function PropertiesScreen({ navigation }) {
   const [properties, setProperties] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [search, setSearch] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [owners, setOwners] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
-      loadProperties();
+      load();
     }, [])
   );
 
-  async function loadProperties() {
-    const db = await getDatabase();
-    const results = await db.getAllAsync('SELECT * FROM properties ORDER BY created_at DESC');
-    setProperties(results);
-  }
-
-  function getTypeLabel(type) {
-    switch (type) {
-      case 'residential': return 'Flat';
-      case 'commercial': return 'Commercial';
-      case 'shop': return 'Shop';
-      case 'warehouse': return 'Warehouse';
-      default: return 'Other';
+  async function load() {
+    setLoading(true);
+    try {
+      const data = await getAllProperties();
+      setProperties(data);
+      const unique = [...new Map(data.map(p => [p.owner_id, { id: p.owner_id, name: p.owner_name }])).values()];
+      setOwners(unique);
+      apply(data, search, ownerFilter);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function renderProperty({ item }) {
+  function apply(list, s, o) {
+    let out = list;
+    if (s.trim()) {
+      const q = s.toLowerCase();
+      out = out.filter(p =>
+        p.name?.toLowerCase().includes(q) ||
+        p.address?.toLowerCase().includes(q) ||
+        p.owner_name?.toLowerCase().includes(q)
+      );
+    }
+    if (o) out = out.filter(p => String(p.owner_id) === String(o));
+    setFiltered(out);
+  }
+
+  function onSearch(val) {
+    setSearch(val);
+    apply(properties, val, ownerFilter);
+  }
+
+  function onOwnerFilter(id) {
+    const next = ownerFilter === id ? '' : id;
+    setOwnerFilter(next);
+    apply(properties, search, next);
+  }
+
+  function renderItem({ item }) {
     return (
       <TouchableOpacity
-        style={styles.propertyCard}
-        onPress={() => navigation.navigate('PropertyDetail', { propertyId: item.id, propertyName: item.name })}
+        style={[CARD_STYLE, styles.card]}
+        onPress={() => navigation.navigate('PropertyDetail', { id: item.id, name: item.name })}
+        activeOpacity={0.75}
       >
-        <View style={styles.propertyIcon}>
-          <Text style={styles.propertyIconText}>{item.name.charAt(0)}</Text>
+        <View style={styles.cardRow}>
+          <Text style={styles.propName}>{item.name}</Text>
+          <Text style={styles.badge}>{item.type}</Text>
         </View>
-        <View style={styles.propertyInfo}>
-          <Text style={styles.propertyName}>{item.name}</Text>
-          <Text style={styles.propertyAddress}>{item.address || 'No address'}</Text>
-          <Text style={styles.propertyType}>{getTypeLabel(item.type)}</Text>
-        </View>
+        <Text style={styles.sub}>Owner: {item.owner_name || '—'}</Text>
+        {!!item.address && <Text style={styles.addr}>{item.address}</Text>}
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {properties.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No properties yet</Text>
-          <Text style={styles.emptySubtext}>Tap + to add your first property</Text>
-        </View>
+    <View style={styles.root}>
+      <TextInput
+        style={[INPUT_STYLE, styles.search]}
+        placeholder="Search properties..."
+        placeholderTextColor={COLORS.placeholder}
+        value={search}
+        onChangeText={onSearch}
+      />
+
+      {owners.length > 0 && (
+        <FlatList
+          data={owners}
+          horizontal
+          keyExtractor={o => String(o.id)}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => onOwnerFilter(String(item.id))}
+              style={[styles.chip, ownerFilter === String(item.id) && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, ownerFilter === String(item.id) && styles.chipTextActive]}>
+                {item.name}
+              </Text>
+            </Pressable>
+          )}
+        />
+      )}
+
+      {loading ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
       ) : (
         <FlatList
-          data={properties}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderProperty}
+          data={filtered}
+          keyExtractor={item => String(item.id)}
+          renderItem={renderItem}
           contentContainerStyle={styles.list}
+          ListEmptyComponent={<Text style={styles.empty}>No properties found.</Text>}
         />
       )}
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => navigation.navigate('AddProperty')}
+        onPress={() => navigation.navigate('AddProperty', {})}
+        activeOpacity={0.8}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F7' },
-  list: { padding: 15 },
-  propertyCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+  root: { flex: 1, backgroundColor: COLORS.background },
+  search: { margin: SPACING.md, marginBottom: SPACING.xs },
+  chips: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm, gap: SPACING.xs },
+  chip: {
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs,
+    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
   },
-  propertyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#1A5276',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipText: { color: COLORS.textMuted, fontSize: FONTS.sm },
+  chipTextActive: { color: COLORS.white, fontWeight: '600' },
+  list: { padding: SPACING.md, paddingTop: SPACING.xs, paddingBottom: 80 },
+  card: { marginBottom: SPACING.sm },
+  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  propName: { color: COLORS.text, fontSize: FONTS.md, fontWeight: '600', flex: 1 },
+  badge: {
+    color: COLORS.primary, fontSize: FONTS.xs, fontWeight: '600',
+    textTransform: 'uppercase', marginLeft: SPACING.sm,
   },
-  propertyIconText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  propertyInfo: { flex: 1 },
-  propertyName: { fontSize: 16, fontWeight: '600', color: '#333' },
-  propertyAddress: { fontSize: 13, color: '#666', marginTop: 2 },
-  propertyType: { fontSize: 11, color: '#1A5276', marginTop: 4, textTransform: 'capitalize' },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#333' },
-  emptySubtext: { fontSize: 14, color: '#999', marginTop: 5 },
+  sub: { color: COLORS.textMuted, fontSize: FONTS.sm, marginTop: 2 },
+  addr: { color: COLORS.textMuted, fontSize: FONTS.xs, marginTop: 2 },
+  empty: { color: COLORS.textMuted, textAlign: 'center', marginTop: SPACING.xl },
   fab: {
-    position: 'absolute', right: 20, bottom: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#1A5276',
-    justifyContent: 'center', alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    position: 'absolute', bottom: SPACING.xl, right: SPACING.xl,
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
+    elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3,
   },
-  fabText: { fontSize: 28, color: '#fff', lineHeight: 30 },
+  fabIcon: { color: COLORS.white, fontSize: 28, lineHeight: 32 },
 });
