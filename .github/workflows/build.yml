@@ -24,8 +24,12 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      - name: Install and fix dependencies
+        run: |
+          npm install --legacy-peer-deps
+          npx expo install --fix
+          echo "=== FIXED VERSIONS ==="
+          node -e "const p=require('./package.json'); console.log(JSON.stringify({...p.dependencies, ...p.devDependencies}, null, 2))"
 
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
