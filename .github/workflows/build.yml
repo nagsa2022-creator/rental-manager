@@ -36,12 +36,50 @@ jobs:
           sed -i '/import com.facebook.react.fabric.ComponentFactory/a import com.facebook.react.fabric.ReactNativeConfig' "$FACTORY_FILE"
           sed -i '/override fun handleInstanceException/i\    override fun getReactNativeConfig(): ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG\n' "$FACTORY_FILE"
 
-      - name: Fix MainApplication.kt for RN 0.77
+      - name: Add CrashActivity for debugging
+        run: |
+          cat > android/app/src/main/java/com/rentalmanager/app/CrashActivity.kt << 'ENDCRASH'
+          package com.rentalmanager.app
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.widget.ScrollView
+          import android.widget.TextView
+          import android.graphics.Color
+          import android.graphics.Typeface
+          import android.text.method.ScrollingMovementMethod
+
+          class CrashActivity : Activity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+              val scrollView = ScrollView(this)
+              scrollView.setBackgroundColor(Color.parseColor("#1A1A2E"))
+              scrollView.setPadding(40, 100, 40, 40)
+
+              val textView = TextView(this)
+              textView.setTextColor(Color.parseColor("#FF6B6B"))
+              textView.textSize = 13f
+              textView.typeface = Typeface.MONOSPACE
+              textView.movementMethod = ScrollingMovementMethod()
+
+              val crash = getSharedPreferences("crash_log", MODE_PRIVATE)
+                .getString("last_crash", "No crash info available")
+
+              textView.text = "=== RENTAL MANAGER CRASH LOG ===\n\n$crash"
+              scrollView.addView(textView)
+              setContentView(scrollView)
+            }
+          }
+          ENDCRASH
+
+      - name: Fix MainApplication.kt for RN 0.77 with crash handler
         run: |
           cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'ENDOFFILE'
           package com.rentalmanager.app
 
           import android.app.Application
+          import android.content.Context
+          import android.content.Intent
           import android.content.res.Configuration
 
           import com.facebook.react.PackageList
@@ -77,6 +115,37 @@ jobs:
               get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
 
             override fun onCreate() {
+              // Catch ANY native crash and show it on screen
+              val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+              Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                try {
+                  val prefs = getSharedPreferences("crash_log", Context.MODE_PRIVATE)
+                  val crashText = buildString {
+                    appendLine("Thread: ${thread.name}")
+                    appendLine("Error: ${throwable.javaClass.simpleName}")
+                    appendLine("Message: ${throwable.message}")
+                    appendLine("")
+                    appendLine("Stack trace:")
+                    appendLine(throwable.stackTraceToString())
+                    var cause = throwable.cause
+                    while (cause != null) {
+                      appendLine("")
+                      appendLine("Caused by: ${cause.javaClass.simpleName}")
+                      appendLine("Message: ${cause.message}")
+                      appendLine(cause.stackTraceToString())
+                      cause = cause.cause
+                    }
+                  }
+                  prefs.edit().putString("last_crash", crashText).commit()
+                  val intent = Intent(this@MainApplication, CrashActivity::class.java)
+                  intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                  startActivity(intent)
+                  android.os.Process.killProcess(android.os.Process.myPid())
+                } catch (e: Exception) {
+                  defaultHandler?.uncaughtException(thread, throwable)
+                }
+              }
+
               super.onCreate()
               SoLoader.init(this, false)
               ApplicationLifecycleDispatcher.onApplicationCreate(this)
@@ -89,18 +158,20 @@ jobs:
           }
           ENDOFFILE
 
+      - name: Register CrashActivity in AndroidManifest
+        run: |
+          # Add CrashActivity before the closing </application> tag
+          sed -i '/<\/application>/i\        <activity android:name=".CrashActivity" android:exported="false" />' android/app/src/main/AndroidManifest.xml
+          echo "=== AndroidManifest.xml ==="
+          cat android/app/src/main/AndroidManifest.xml
+
       - name: Patch build.gradle
         run: |
           sed -i '/enableBundleCompression/d' android/app/build.gradle
-          # Disable ProGuard/R8 minification to prevent native crash
           sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/' android/app/build.gradle
           sed -i 's/isShrinkResources = true/isShrinkResources = false/' android/app/build.gradle
           sed -i 's/minifyEnabled true/minifyEnabled false/' android/app/build.gradle
           sed -i 's/shrinkResources true/shrinkResources false/' android/app/build.gradle
-          echo "=== release buildType in build.gradle ==="
-          grep -A 10 "release {" android/app/build.gradle || true
-          echo "=== proguard rules ==="
-          cat android/app/proguard-rules.pro 2>/dev/null || echo "No proguard-rules.pro"
 
       - name: Build APK
         run: |
