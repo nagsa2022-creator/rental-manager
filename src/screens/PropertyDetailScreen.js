@@ -1,145 +1,108 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import {
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDatabase } from '../database/database';
+import { COLORS, SPACING, CARD_STYLE, FONTS, BTN } from '../constants/theme';
+import { getProperty, getTenantsByProperty } from '../database/queries';
 
 export default function PropertyDetailScreen({ route, navigation }) {
-  const { propertyId, propertyName } = route.params;
+  const { id, name } = route.params || {};
   const [property, setProperty] = useState(null);
-  const [tenantCount, setTenantCount] = useState(0);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadProperty();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => {
+    navigation.setOptions({ title: name || 'Property' });
+    load();
+  }, [id]));
 
-  async function loadProperty() {
-    const db = await getDatabase();
-    const p = await db.getFirstAsync('SELECT * FROM properties WHERE id = ?', [propertyId]);
-    setProperty(p);
-    const count = await db.getFirstAsync(
-      'SELECT COUNT(*) as count FROM tenants WHERE property_id = ? AND is_active = 1',
-      [propertyId]
-    );
-    setTenantCount(count.count);
-  }
-
-  async function handleDelete() {
-    Alert.alert(
-      'Delete Property?',
-      'This will delete the property and ALL its tenants, bills, and expenses. This cannot be undone!',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            const db = await getDatabase();
-            await db.execAsync(`
-              DELETE FROM expenses WHERE property_id = ${propertyId};
-              DELETE FROM electricity_readings WHERE property_id = ${propertyId};
-              DELETE FROM bills WHERE property_id = ${propertyId};
-              DELETE FROM tenants WHERE property_id = ${propertyId};
-              DELETE FROM properties WHERE id = ${propertyId};
-            `);
-            navigation.goBack();
-          }
-        }
-      ]
-    );
-  }
-
-  if (!property) return null;
-
-  function getTypeIcon(type) {
-    switch (type) {
-      case 'residential': return '🏠';
-      case 'commercial': return '🏢';
-      case 'shop': return '🛒';
-      case 'warehouse': return '🏭';
-      default: return '📦';
+  async function load() {
+    setLoading(true);
+    try {
+      const [prop, tenantList] = await Promise.all([
+        getProperty(id),
+        getTenantsByProperty(id),
+      ]);
+      setProperty(prop);
+      setTenants((tenantList || []).filter(t => t.is_active !== 0));
+    } finally {
+      setLoading(false);
     }
   }
 
-  return (
-    <View style={styles.container}>
-      {/* Property Info */}
-      <View style={styles.infoCard}>
-        <Text style={styles.icon}>{getTypeIcon(property.type)}</Text>
-        <Text style={styles.name}>{property.name}</Text>
-        <Text style={styles.type}>{property.type}</Text>
-        {property.address ? <Text style={styles.address}>{property.address}</Text> : null}
-        {property.upi_id ? <Text style={styles.upi}>UPI: {property.upi_id}</Text> : null}
-        {property.lease_start ? (
-          <Text style={styles.lease}>
-            Lease: {property.lease_start} → {property.lease_end || '—'}
-          </Text>
-        ) : null}
-        <Text style={styles.tenantCount}>{tenantCount} active tenant(s)</Text>
-      </View>
-
-      {/* Action Menu */}
-      <View style={styles.menu}>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => navigation.navigate('Tenants', { propertyId, propertyName })}
-        >
-          <Text style={styles.menuIcon}>👤</Text>
-          <Text style={styles.menuText}>Tenants</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => navigation.navigate('Electricity', { propertyId, propertyName })}
-        >
-          <Text style={styles.menuIcon}>⚡</Text>
-          <Text style={styles.menuText}>Electricity Split</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => navigation.navigate('ExpenseLog', { propertyId, propertyName })}
-        >
-          <Text style={styles.menuIcon}>💰</Text>
-          <Text style={styles.menuText}>Expenses</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Delete */}
-      <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-        <Text style={styles.deleteBtnText}>🗑️ Delete Property</Text>
-      </TouchableOpacity>
+  if (loading) return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={COLORS.primary} />
     </View>
   );
-}
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F7', padding: 15 },
-  infoCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 20,
-    alignItems: 'center', elevation: 2, marginBottom: 20,
-  },
-  icon: { fontSize: 48, marginBottom: 8 },
-  name: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  type: { fontSize: 13, color: '#1A5276', textTransform: 'capitalize', marginTop: 4 },
-  address: { fontSize: 13, color: '#666', marginTop: 6, textAlign: 'center' },
-  upi: { fontSize: 12, color: '#888', marginTop: 4 },
-  lease: { fontSize: 12, color: '#888', marginTop: 4 },
-  tenantCount: { fontSize: 14, fontWeight: '600', color: '#1A5276', marginTop: 10 },
-  menu: { backgroundColor: '#fff', borderRadius: 12, elevation: 1, marginBottom: 20 },
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center', padding: 16,
-    borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
-  },
-  menuIcon: { fontSize: 22, marginRight: 12 },
-  menuText: { flex: 1, fontSize: 15, color: '#333' },
-  menuArrow: { fontSize: 20, color: '#ccc' },
-  deleteBtn: {
-    padding: 14, borderRadius: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: '#E74C3C',
-  },
-  deleteBtnText: { fontSize: 14, color: '#E74C3C' },
-});
+  if (!property) return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={FONTS.caption}>Property not found.</Text>
+    </View>
+  );
+
+  const InfoRow = ({ label, value }) => {
+    if (!value) return null;
+    return (
+      <View style={{ flexDirection: 'row', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderColor: COLORS.border }}>
+        <Text style={{ ...FONTS.caption, width: 120 }}>{label}</Text>
+        <Text style={{ ...FONTS.body, flex: 1 }}>{value}</Text>
+      </View>
+    );
+  };
+
+  const ActionBtn = ({ title, onPress, color }) => (
+    <TouchableOpacity style={{ ...BTN.primary, marginBottom: SPACING.sm, ...(color && { backgroundColor: color }) }}
+      onPress={onPress} activeOpacity={0.8}>
+      <Text style={BTN.text}>{title}</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }}
+      contentContainerStyle={{ padding: SPACING.lg, paddingBottom: 40 }}>
+
+      <View style={CARD_STYLE}>
+        <Text style={{ ...FONTS.title, marginBottom: SPACING.sm }}>{property.name}</Text>
+        <InfoRow label="Type" value={property.type} />
+        <InfoRow label="Owner" value={property.owner_name} />
+        <InfoRow label="Address" value={property.address} />
+        <InfoRow label="Elec. Rate" value={property.electricity_rate ? `₹${property.electricity_rate}/unit` : null} />
+        {!!property.notes && <Text style={{ ...FONTS.caption, marginTop: SPACING.sm, fontStyle: 'italic' }}>{property.notes}</Text>}
+      </View>
+
+      <View style={CARD_STYLE}>
+        <Text style={{ ...FONTS.subtitle, marginBottom: SPACING.sm }}>Active Tenants ({tenants.length})</Text>
+        {tenants.length === 0 ? (
+          <Text style={FONTS.caption}>No active tenants.</Text>
+        ) : tenants.map(t => (
+          <TouchableOpacity key={t.id}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs,
+              borderBottomWidth: 1, borderColor: COLORS.border }}
+            onPress={() => navigation.navigate('TenantDetail', { id: t.id, name: t.name })}>
+            <View style={{ flex: 1 }}>
+              <Text style={FONTS.body}>{t.name}</Text>
+              {!!t.room_name && <Text style={FONTS.small}>{t.room_name}</Text>}
+            </View>
+            {!!t.phone && <Text style={FONTS.caption}>{t.phone}</Text>}
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <ActionBtn title="Setup Floors / Rooms"
+        onPress={() => navigation.navigate('PropertySetup', {
+          property_id: id, property_name: property.name, has_floors: !!property.has_floors,
+        })} />
+      <ActionBtn title="Monthly Billing" color={COLORS.success}
+        onPress={() => navigation.navigate('MonthlyBilling', { property_id: id })} />
+      <ActionBtn title="Add Tenant"
+        onPress={() => navigation.navigate('AddTenant', { property_id: id })} />
+      <ActionBtn title="Expenses"
+        onPress={() => navigation.navigate('Expenses', { property_id: id })} />
+      <ActionBtn title="Edit Property" color={COLORS.card}
+        onPress={() => navigation.navigate('AddProperty', { id })} />
+    </ScrollView>
+  );
+}
