@@ -38,7 +38,7 @@ jobs:
 
       - name: Fix MainApplication.kt for RN 0.77
         run: |
-          cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'KOTLIN'
+          cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'ENDOFFILE'
           package com.rentalmanager.app
 
           import android.app.Application
@@ -69,6 +69,7 @@ jobs:
                 override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
                 override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+                override val isHermesEnabled: Boolean = true
               }
             )
 
@@ -86,7 +87,7 @@ jobs:
               ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
             }
           }
-          KOTLIN
+          ENDOFFILE
 
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
