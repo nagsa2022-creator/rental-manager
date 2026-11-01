@@ -90,7 +90,17 @@ jobs:
           ENDOFFILE
 
       - name: Patch build.gradle
-        run: sed -i '/enableBundleCompression/d' android/app/build.gradle
+        run: |
+          sed -i '/enableBundleCompression/d' android/app/build.gradle
+          # Disable ProGuard/R8 minification to prevent native crash
+          sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/' android/app/build.gradle
+          sed -i 's/isShrinkResources = true/isShrinkResources = false/' android/app/build.gradle
+          sed -i 's/minifyEnabled true/minifyEnabled false/' android/app/build.gradle
+          sed -i 's/shrinkResources true/shrinkResources false/' android/app/build.gradle
+          echo "=== release buildType in build.gradle ==="
+          grep -A 10 "release {" android/app/build.gradle || true
+          echo "=== proguard rules ==="
+          cat android/app/proguard-rules.pro 2>/dev/null || echo "No proguard-rules.pro"
 
       - name: Build APK
         run: |
