@@ -24,12 +24,11 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Install and fix dependencies
-        run: |
-          npm install --legacy-peer-deps
-          npx expo install --fix
-          echo "=== FIXED VERSIONS ==="
-          node -e "const p=require('./package.json'); console.log(JSON.stringify({...p.dependencies, ...p.devDependencies}, null, 2))"
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Fix versions for Expo SDK
+        run: npx expo install --fix
 
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
@@ -37,53 +36,11 @@ jobs:
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
 
-      - name: Add crash handler
-        run: |
-          cat > android/app/src/main/java/com/rentalmanager/app/CrashActivity.kt << 'ENDCRASH'
-          package com.rentalmanager.app
-
-          import android.app.Activity
-          import android.os.Bundle
-          import android.widget.ScrollView
-          import android.widget.TextView
-          import android.graphics.Color
-          import android.graphics.Typeface
-
-          class CrashActivity : Activity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
-              super.onCreate(savedInstanceState)
-              val scrollView = ScrollView(this)
-              scrollView.setBackgroundColor(Color.parseColor("#1A1A2E"))
-              scrollView.setPadding(40, 100, 40, 40)
-              val textView = TextView(this)
-              textView.setTextColor(Color.parseColor("#FF6B6B"))
-              textView.textSize = 13f
-              textView.typeface = Typeface.MONOSPACE
-              val crash = getSharedPreferences("crash_log", MODE_PRIVATE)
-                .getString("last_crash", "No crash info")
-              textView.text = "=== CRASH LOG ===\n\n$crash"
-              scrollView.addView(textView)
-              setContentView(scrollView)
-            }
-          }
-          ENDCRASH
-
-          sed -i '/<\/application>/i\        <activity android:name=".CrashActivity" android:exported="false" />' android/app/src/main/AndroidManifest.xml
-
-          MAIN_FILE="android/app/src/main/java/com/rentalmanager/app/MainApplication.kt"
-          sed -i '/super.onCreate()/i\    Thread.setDefaultUncaughtExceptionHandler { _, throwable ->\n      try {\n        getSharedPreferences("crash_log", 0).edit().putString("last_crash", throwable.stackTraceToString()).commit()\n        startActivity(android.content.Intent(this@MainApplication, CrashActivity::class.java).setFlags(0x10000000 or 0x04000000))\n        android.os.Process.killProcess(android.os.Process.myPid())\n      } catch (_: Exception) {}\n    }' "$MAIN_FILE"
-
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease 2>&1 | tee build.log; EXIT=${PIPESTATUS[0]}
-          echo ""
-          echo "=== KOTLIN ERRORS ==="
-          grep "^e:" build.log || echo "No Kotlin errors"
-          echo "=== BUILD RESULT ==="
-          grep "BUILD " build.log
-          exit $EXIT
+          ./gradlew assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
