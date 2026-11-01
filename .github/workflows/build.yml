@@ -30,12 +30,6 @@ jobs:
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Patch expo Kotlin file
-        run: |
-          FACTORY_FILE="node_modules/expo/android/src/main/java/expo/modules/ExpoReactHostFactory.kt"
-          sed -i '/import com.facebook.react.fabric.ComponentFactory/a import com.facebook.react.fabric.ReactNativeConfig' "$FACTORY_FILE"
-          sed -i '/override fun handleInstanceException/i\    override fun getReactNativeConfig(): ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG\n' "$FACTORY_FILE"
-
       - name: Patch build.gradle
         run: sed -i '/enableBundleCompression/d' android/app/build.gradle
 
