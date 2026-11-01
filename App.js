@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { View, Text, ScrollView } from 'react-native';
 import { getDatabase } from './src/database/database';
 
 // Screens
@@ -27,21 +28,67 @@ const THEME = {
   headerTitleStyle: { fontWeight: 'bold' },
 };
 
+// Error boundary to catch and display JS errors
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <ScrollView style={{ flex: 1, backgroundColor: '#FDEDEC', padding: 30, paddingTop: 80 }}>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#C0392B' }}>App Error</Text>
+          <Text style={{ fontSize: 14, color: '#333', marginTop: 15 }}>
+            {String(this.state.error)}
+          </Text>
+          <Text style={{ fontSize: 12, color: '#666', marginTop: 10 }}>
+            {this.state.error?.stack || ''}
+          </Text>
+        </ScrollView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [dbReady, setDbReady] = useState(false);
+  const [initError, setInitError] = useState(null);
 
   useEffect(() => {
     async function init() {
-      await getDatabase();
-      setDbReady(true);
+      try {
+        await getDatabase();
+        setDbReady(true);
+      } catch (e) {
+        setInitError(e);
+      }
     }
     init();
   }, []);
 
+  if (initError) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#FDEDEC', padding: 30, paddingTop: 80 }}>
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#C0392B' }}>Database Error</Text>
+        <Text style={{ fontSize: 14, color: '#333', marginTop: 15 }}>
+          {String(initError)}
+        </Text>
+        <Text style={{ fontSize: 12, color: '#666', marginTop: 10 }}>
+          {initError?.stack || ''}
+        </Text>
+      </ScrollView>
+    );
+  }
+
   if (!dbReady) return null;
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style="light" />
       <NavigationContainer>
         <Stack.Navigator screenOptions={THEME}>
@@ -60,6 +107,6 @@ export default function App() {
           <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup & Restore' }} />
         </Stack.Navigator>
       </NavigationContainer>
-    </>
+    </ErrorBoundary>
   );
 }
