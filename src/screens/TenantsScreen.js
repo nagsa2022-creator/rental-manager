@@ -1,11 +1,31 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getDatabase } from '../database/database';
+import { COLORS, SPACING, CARD_STYLE, FONTS, BTN } from '../constants/theme';
+import { getAllTenants } from '../database/queries';
+import StatusBadge from '../components/StatusBadge';
+import SearchBar from '../components/SearchBar';
 
-export default function TenantsScreen({ route, navigation }) {
-  const { propertyId, propertyName } = route.params;
+export default function TenantsScreen({ navigation }) {
   const [tenants, setTenants] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const loadTenants = async () => {
+    setLoading(true);
+    const data = await getAllTenants();
+    setTenants(data);
+    applyFilter(data, query);
+    setLoading(false);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -13,120 +33,123 @@ export default function TenantsScreen({ route, navigation }) {
     }, [])
   );
 
-  async function loadTenants() {
-    const db = await getDatabase();
-    const results = await db.getAllAsync(
-      'SELECT * FROM tenants WHERE property_id = ? ORDER BY is_active DESC, name ASC',
-      [propertyId]
+  const applyFilter = (data, q) => {
+    if (!q.trim()) {
+      setFiltered(data);
+      return;
+    }
+    const lower = q.toLowerCase();
+    setFiltered(
+      data.filter(
+        (t) =>
+          t.name?.toLowerCase().includes(lower) ||
+          t.property_name?.toLowerCase().includes(lower) ||
+          t.room_label?.toLowerCase().includes(lower)
+      )
     );
-    setTenants(results);
-  }
+  };
 
-  function renderTenant({ item }) {
-    return (
-      <TouchableOpacity
-        style={[styles.card, !item.is_active && styles.cardInactive]}
-        onPress={() => navigation.navigate('TenantDetail', {
-          tenantId: item.id,
-          tenantName: item.name,
-          propertyId,
-          propertyName,
-        })}
-      >
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
-        </View>
-        <View style={styles.info}>
-          <Text style={styles.name}>{item.name}</Text>
-          <Text style={styles.detail}>
-            {item.room_no ? `Room: ${item.room_no} • ` : ''}₹{item.rent_amount}/month
-          </Text>
-          <Text style={styles.phone}>{item.phone || 'No phone'}</Text>
-        </View>
-        {!item.is_active && (
-          <View style={styles.inactiveBadge}>
-            <Text style={styles.inactiveBadgeText}>Moved out</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  }
+  const handleSearch = (q) => {
+    setQuery(q);
+    applyFilter(tenants, q);
+  };
+
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => navigation.navigate('TenantDetail', { id: item.id, name: item.name })}
+      activeOpacity={0.75}
+    >
+      <View style={styles.cardRow}>
+        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+        <StatusBadge status={item.status} />
+      </View>
+      <Text style={styles.meta}>{item.property_name}  •  {item.room_label}</Text>
+      <Text style={styles.rent}>Rs {item.monthly_rent?.toLocaleString('en-IN')} / month</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
-      {tenants.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>👤</Text>
-          <Text style={styles.emptyText}>No tenants yet</Text>
-          <Text style={styles.emptySubtext}>Tap + to add a tenant</Text>
-        </View>
+      <SearchBar value={query} onChangeText={handleSearch} placeholder="Search tenants..." />
+
+      {loading ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: SPACING.xl }} />
       ) : (
         <FlatList
-          data={tenants}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderTenant}
+          data={filtered}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderItem}
           contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No tenants found.</Text>
+          }
         />
       )}
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => navigation.navigate('AddTenant', { propertyId, propertyName })}
+        onPress={() => navigation.navigate('AddTenant')}
+        activeOpacity={0.85}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Text style={styles.fabLabel}>+</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F6F7' },
-  list: { padding: 15 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  list: {
+    padding: SPACING.md,
+    paddingBottom: SPACING.xl * 4,
+  },
   card: {
+    ...CARD_STYLE,
+    marginBottom: SPACING.sm,
+    padding: SPACING.md,
+  },
+  cardRow: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    marginBottom: 4,
   },
-  cardInactive: { opacity: 0.6 },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#1A5276',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
+  name: {
+    ...FONTS.body,
+    color: COLORS.text,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: SPACING.sm,
   },
-  avatarText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  info: { flex: 1 },
-  name: { fontSize: 16, fontWeight: '600', color: '#333' },
-  detail: { fontSize: 13, color: '#1A5276', marginTop: 2 },
-  phone: { fontSize: 12, color: '#888', marginTop: 2 },
-  inactiveBadge: {
-    backgroundColor: '#FDEDEC',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+  meta: {
+    ...FONTS.small,
+    color: COLORS.textMuted,
+    marginBottom: 2,
   },
-  inactiveBadgeText: { fontSize: 10, color: '#C0392B' },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyIcon: { fontSize: 60, marginBottom: 10 },
-  emptyText: { fontSize: 18, fontWeight: '600', color: '#333' },
-  emptySubtext: { fontSize: 14, color: '#999', marginTop: 5 },
+  rent: {
+    ...FONTS.small,
+    color: COLORS.primary,
+    marginTop: 4,
+  },
+  empty: {
+    ...FONTS.body,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.xl,
+  },
   fab: {
-    position: 'absolute', right: 20, bottom: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#1A5276',
-    justifyContent: 'center', alignItems: 'center',
-    elevation: 5,
+    ...BTN.fab,
+    position: 'absolute',
+    bottom: SPACING.xl,
+    right: SPACING.xl,
   },
-  fabText: { fontSize: 28, color: '#fff', lineHeight: 30 },
+  fabLabel: {
+    ...FONTS.heading,
+    color: COLORS.white,
+    lineHeight: 32,
+  },
 });
