@@ -36,73 +36,10 @@ jobs:
           sed -i '/import com.facebook.react.fabric.ComponentFactory/a import com.facebook.react.fabric.ReactNativeConfig' "$FACTORY_FILE"
           sed -i '/override fun handleInstanceException/i\    override fun getReactNativeConfig(): ReactNativeConfig = ReactNativeConfig.DEFAULT_CONFIG\n' "$FACTORY_FILE"
 
-      - name: Fix MainApplication.kt for RN 0.78
-        run: |
-          cat > android/app/src/main/java/com/rentalmanager/app/MainApplication.kt << 'ENDOFFILE'
-          package com.rentalmanager.app
+      - name: Patch build.gradle
+        run: sed -i '/enableBundleCompression/d' android/app/build.gradle
 
-          import android.app.Application
-          import android.content.res.Configuration
-
-          import com.facebook.react.PackageList
-          import com.facebook.react.ReactApplication
-          import com.facebook.react.ReactNativeHost
-          import com.facebook.react.ReactPackage
-          import com.facebook.react.ReactHost
-          import com.facebook.react.defaults.DefaultReactNativeHost
-          import com.facebook.soloader.SoLoader
-
-          import expo.modules.ApplicationLifecycleDispatcher
-          import expo.modules.ReactNativeHostWrapper
-
-          class MainApplication : Application(), ReactApplication {
-
-            override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
-              this,
-              object : DefaultReactNativeHost(this) {
-                override fun getPackages(): List<ReactPackage> =
-                  PackageList(this).packages.apply {
-                  }
-
-                override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
-
-                override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-                override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-                override val isHermesEnabled: Boolean = true
-              }
-            )
-
-            override val reactHost: ReactHost
-              get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
-
-            override fun onCreate() {
-              // Crash handler - shows errors on screen instead of crashing
-              Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
-                try {
-                  getSharedPreferences("crash_log", 0).edit()
-                    .putString("last_crash", throwable.stackTraceToString()).commit()
-                  startActivity(
-                    android.content.Intent(this@MainApplication, CrashActivity::class.java)
-                      .setFlags(0x10000000 or 0x04000000)
-                  )
-                  android.os.Process.killProcess(android.os.Process.myPid())
-                } catch (_: Exception) {}
-              }
-
-              super.onCreate()
-              SoLoader.init(this, false)
-              ApplicationLifecycleDispatcher.onApplicationCreate(this)
-            }
-
-            override fun onConfigurationChanged(newConfig: Configuration) {
-              super.onConfigurationChanged(newConfig)
-              ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
-            }
-          }
-          ENDOFFILE
-
-      - name: Add CrashActivity
+      - name: Add crash handler
         run: |
           cat > android/app/src/main/java/com/rentalmanager/app/CrashActivity.kt << 'ENDCRASH'
           package com.rentalmanager.app
@@ -135,8 +72,8 @@ jobs:
 
           sed -i '/<\/application>/i\        <activity android:name=".CrashActivity" android:exported="false" />' android/app/src/main/AndroidManifest.xml
 
-      - name: Patch build.gradle
-        run: sed -i '/enableBundleCompression/d' android/app/build.gradle
+          MAIN_FILE="android/app/src/main/java/com/rentalmanager/app/MainApplication.kt"
+          sed -i '/super.onCreate()/i\    Thread.setDefaultUncaughtExceptionHandler { _, throwable ->\n      try {\n        getSharedPreferences("crash_log", 0).edit().putString("last_crash", throwable.stackTraceToString()).commit()\n        startActivity(android.content.Intent(this@MainApplication, CrashActivity::class.java).setFlags(0x10000000 or 0x04000000))\n        android.os.Process.killProcess(android.os.Process.myPid())\n      } catch (_: Exception) {}\n    }' "$MAIN_FILE"
 
       - name: Build APK
         run: |
