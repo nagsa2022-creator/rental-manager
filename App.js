@@ -1,112 +1,83 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { getDatabase } from './src/database/database';
+import { COLORS, NAV_THEME } from './src/constants/theme';
 
-// Screens
 import HomeScreen from './src/screens/HomeScreen';
-import DashboardScreen from './src/screens/DashboardScreen';
+import OwnersScreen from './src/screens/OwnersScreen';
+import AddOwnerScreen from './src/screens/AddOwnerScreen';
+import OwnerDetailScreen from './src/screens/OwnerDetailScreen';
 import PropertiesScreen from './src/screens/PropertiesScreen';
 import AddPropertyScreen from './src/screens/AddPropertyScreen';
+import PropertySetupScreen from './src/screens/PropertySetupScreen';
 import PropertyDetailScreen from './src/screens/PropertyDetailScreen';
 import TenantsScreen from './src/screens/TenantsScreen';
 import AddTenantScreen from './src/screens/AddTenantScreen';
 import TenantDetailScreen from './src/screens/TenantDetailScreen';
-import AddBillScreen from './src/screens/AddBillScreen';
-import PayViaUPIScreen from './src/screens/PayViaUPIScreen';
-import ElectricityScreen from './src/screens/ElectricityScreen';
-import ExpenseLogScreen from './src/screens/ExpenseLogScreen';
-import BackupScreen from './src/screens/BackupScreen';
+import MonthlyBillingScreen from './src/screens/MonthlyBillingScreen';
+import DuesSummaryScreen from './src/screens/DuesSummaryScreen';
+import OwnerPayoutScreen from './src/screens/OwnerPayoutScreen';
+import AnnualSummaryScreen from './src/screens/AnnualSummaryScreen';
+import ExpensesScreen from './src/screens/ExpensesScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
-const THEME = {
-  headerStyle: { backgroundColor: '#1A5276' },
-  headerTintColor: '#fff',
-  headerTitleStyle: { fontWeight: 'bold' },
+const navTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: COLORS.bg, card: '#010409', text: COLORS.text, border: COLORS.border },
 };
 
-// Error boundary to catch and display JS errors
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <ScrollView style={{ flex: 1, backgroundColor: '#FDEDEC', padding: 30, paddingTop: 80 }}>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#C0392B' }}>App Error</Text>
-          <Text style={{ fontSize: 14, color: '#333', marginTop: 15 }}>
-            {String(this.state.error)}
-          </Text>
-          <Text style={{ fontSize: 12, color: '#666', marginTop: 10 }}>
-            {this.state.error?.stack || ''}
-          </Text>
-        </ScrollView>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export default function App() {
-  const [dbReady, setDbReady] = useState(false);
-  const [initError, setInitError] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    async function init() {
-      try {
-        await getDatabase();
-        setDbReady(true);
-      } catch (e) {
-        setInitError(e);
-      }
-    }
-    init();
+    (async () => {
+      try { await getDatabase(); setReady(true); }
+      catch (e) { setError(String(e)); }
+    })();
   }, []);
 
-  if (initError) {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: '#FDEDEC', padding: 30, paddingTop: 80 }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#C0392B' }}>Database Error</Text>
-        <Text style={{ fontSize: 14, color: '#333', marginTop: 15 }}>
-          {String(initError)}
-        </Text>
-        <Text style={{ fontSize: 12, color: '#666', marginTop: 10 }}>
-          {initError?.stack || ''}
-        </Text>
-      </ScrollView>
-    );
-  }
-
-  if (!dbReady) return null;
+  if (error) return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', padding: 30 }}>
+      <Text style={{ color: COLORS.danger, fontSize: 16 }}>Database Error</Text>
+      <Text style={{ color: COLORS.textSecondary, marginTop: 10, fontSize: 13 }}>{error}</Text>
+    </View>
+  );
+  if (!ready) return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color={COLORS.primary} />
+    </View>
+  );
 
   return (
-    <ErrorBoundary>
+    <>
       <StatusBar style="light" />
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={THEME}>
+      <NavigationContainer theme={navTheme}>
+        <Stack.Navigator screenOptions={NAV_THEME}>
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Rental Manager' }} />
-          <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
-          <Stack.Screen name="Properties" component={PropertiesScreen} options={{ title: 'My Properties' }} />
-          <Stack.Screen name="AddProperty" component={AddPropertyScreen} options={{ title: 'Add Property' }} />
-          <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} options={({ route }) => ({ title: route.params.propertyName })} />
-          <Stack.Screen name="Tenants" component={TenantsScreen} options={({ route }) => ({ title: `${route.params.propertyName} - Tenants` })} />
-          <Stack.Screen name="AddTenant" component={AddTenantScreen} options={{ title: 'Add Tenant' }} />
-          <Stack.Screen name="TenantDetail" component={TenantDetailScreen} options={({ route }) => ({ title: route.params.tenantName })} />
-          <Stack.Screen name="AddBill" component={AddBillScreen} options={{ title: 'Add Monthly Bill' }} />
-          <Stack.Screen name="PayViaUPI" component={PayViaUPIScreen} options={{ title: 'UPI Payment' }} />
-          <Stack.Screen name="Electricity" component={ElectricityScreen} options={{ title: 'Electricity Split' }} />
-          <Stack.Screen name="ExpenseLog" component={ExpenseLogScreen} options={({ route }) => ({ title: `${route.params.propertyName} - Expenses` })} />
-          <Stack.Screen name="Backup" component={BackupScreen} options={{ title: 'Backup & Restore' }} />
+          <Stack.Screen name="Owners" component={OwnersScreen} options={{ title: 'Owners' }} />
+          <Stack.Screen name="AddOwner" component={AddOwnerScreen} options={({ route }) => ({ title: route.params?.id ? 'Edit Owner' : 'Add Owner' })} />
+          <Stack.Screen name="OwnerDetail" component={OwnerDetailScreen} options={({ route }) => ({ title: route.params?.name || 'Owner' })} />
+          <Stack.Screen name="Properties" component={PropertiesScreen} options={{ title: 'Properties' }} />
+          <Stack.Screen name="AddProperty" component={AddPropertyScreen} options={({ route }) => ({ title: route.params?.id ? 'Edit Property' : 'Add Property' })} />
+          <Stack.Screen name="PropertySetup" component={PropertySetupScreen} options={{ title: 'Property Setup' }} />
+          <Stack.Screen name="PropertyDetail" component={PropertyDetailScreen} options={({ route }) => ({ title: route.params?.name || 'Property' })} />
+          <Stack.Screen name="Tenants" component={TenantsScreen} options={{ title: 'Tenants' }} />
+          <Stack.Screen name="AddTenant" component={AddTenantScreen} options={({ route }) => ({ title: route.params?.id ? 'Edit Tenant' : 'Add Tenant' })} />
+          <Stack.Screen name="TenantDetail" component={TenantDetailScreen} options={({ route }) => ({ title: route.params?.name || 'Tenant' })} />
+          <Stack.Screen name="MonthlyBilling" component={MonthlyBillingScreen} options={{ title: 'Monthly Billing' }} />
+          <Stack.Screen name="DuesSummary" component={DuesSummaryScreen} options={{ title: 'Dues Summary' }} />
+          <Stack.Screen name="OwnerPayout" component={OwnerPayoutScreen} options={{ title: 'Owner Payout' }} />
+          <Stack.Screen name="AnnualSummary" component={AnnualSummaryScreen} options={{ title: 'Annual Summary' }} />
+          <Stack.Screen name="Expenses" component={ExpensesScreen} options={{ title: 'Expenses' }} />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         </Stack.Navigator>
       </NavigationContainer>
-    </ErrorBoundary>
+    </>
   );
 }
