@@ -28,7 +28,9 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Fix versions for Expo SDK
-        run: npx expo install --fix
+        run: |
+          npx expo install --fix || true
+          npm install --legacy-peer-deps
 
       - name: Generate native project
         run: npx expo prebuild --platform android --no-install
